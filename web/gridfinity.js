@@ -66,6 +66,7 @@ export const DEFAULT_PARAMS = {
   label_position: 'Full',
   label_width: 30.0,
   label_depth: 13.0,
+  label_type: 'standard',
 
   scoops: false,
   scoop_radius: 15.0,
@@ -349,6 +350,22 @@ function _make_bin_dividers(p, gx_, gy_) {
         _cyl(cx, cy, 0.0, full_h, radius_0, radius_0))));
     }
   }
+
+  if (p.label_type === 'fred' && p.labels) {
+    const z_top = (p.grids_z * BASIC_UNIT_Z) - TOP_CLEARANCE_OFFSET;
+    const dx_n = (p.dividers && p.label_for_each_section) ? p.dividers_x : 0;
+    const dy_n = (p.dividers && p.label_for_each_section) ? p.dividers_y : 0;
+
+    for (let dy = 0; dy <= dy_n; dy++) {
+      const label_w = Wx - 2 * OFFSET_XY;
+      const base_depth = (dy === 0) ? 13.0 : 14.0;
+      const label_d = (dy === 0) ? (base_depth + STACKING_LIP_WIDTH) : base_depth;
+      const sy = (Wy * (dy_n + 1 - dy)
+        - OFFSET_XY * (dy_n + 1 - 2.0 * dy)
+        + wall * dy) / (dy_n + 1);
+      voids.push(_box(OFFSET_XY, sy - label_d, z_top - 1.0, label_w, label_d, 1.0));
+    }
+  }
   return _diff_all(outer, voids);
 }
 
@@ -356,11 +373,12 @@ function _make_bin_label(p, gx_, gy_, start_x, start_y, width, depth) {
   const z_top = (p.grids_z * BASIC_UNIT_Z) - TOP_CLEARANCE_OFFSET;
 
   // 1 mm top slab
-  const slab = _box(start_x, start_y - depth, z_top - LABEL_HEIGHT, width, depth, LABEL_HEIGHT);
+  const slab_h = (p.label_type === 'fred') ? 2.0 : LABEL_HEIGHT;
+  const slab = _box(start_x, start_y - depth, z_top - slab_h, width, depth, slab_h);
 
   // Sloped wedge (hull of two thin rectangles, mirroring SCAD)
-  const rect_a = _box(start_x, start_y - depth, z_top - LABEL_HEIGHT, width, depth, 0.0001);
-  const rect_b = _box(start_x, start_y, z_top - LABEL_HEIGHT - depth, width, 0.0001, 0.0001);
+  const rect_a = _box(start_x, start_y - depth, z_top - slab_h, width, depth, 0.0001);
+  const rect_b = _box(start_x, start_y, z_top - slab_h - depth, width, 0.0001, 0.0001);
   let triangle = Manifold.hull([rect_a, rect_b]);
 
   if (p.ultra_light_labels) {
@@ -389,6 +407,52 @@ function _make_bin_label(p, gx_, gy_, start_x, start_y, width, depth) {
     }
     triangle = _diff_all(triangle, rip_voids);
   }
+  // Fred label style: subtract rounded rect recess
+  if (p.label_type === 'fred') {
+    const fred_w = 36.3 + 42.0 * Math.max(0.0, gx_ - 1.0);    
+    const fred_d = 12.0;
+    const fred_h = 1.0;
+    const fred_r = 2.3/2.0;
+
+    const rx = start_x + (width - fred_w) / 2.0;
+    const extra_depth = (depth === 14.0) ? 1.0 : STACKING_LIP_WIDTH;
+    const ry = start_y - fred_d - extra_depth;
+
+    function _rounded_rect_prism(x0, y0, z0, w, d, h, r) {
+      const parts = [];
+      const e = EPS_VOID;
+      if (w - 2 * r > 0 && d - 2 * r > 0) {
+        parts.push(_box(x0 + r - e, y0 + r - e, z0 - e, w - 2 * r + 2 * e, d - 2 * r + 2 * e, h + 2 * e));
+      }
+      parts.push(_box(x0 - e, y0 + r - e, z0 - e, r + e, Math.max(0, d - 2 * r) + 2 * e, h + 2 * e));
+      parts.push(_box(x0 + w - r, y0 + r - e, z0 - e, r + e, Math.max(0, d - 2 * r) + 2 * e, h + 2 * e));
+      parts.push(_box(x0 + r - e, y0 - e, z0 - e, Math.max(0, w - 2 * r) + 2 * e, r + e, h + 2 * e));
+      parts.push(_box(x0 + r - e, y0 + d - r, z0 - e, Math.max(0, w - 2 * r) + 2 * e, r + e, h + 2 * e));
+      parts.push(_cyl(x0 + r, y0 + r, z0 - e, h + 2 * e, r + e, r + e));
+      parts.push(_cyl(x0 + w - r, y0 + r, z0 - e, h + 2 * e, r + e, r + e));
+      parts.push(_cyl(x0 + r, y0 + d - r, z0 - e, h + 2 * e, r + e, r + e));
+      parts.push(_cyl(x0 + w - r, y0 + d - r, z0 - e, h + 2 * e, r + e, r + e));
+      return _union_all(parts);
+    }
+
+    const side_tab_w = 1.0;
+    const side_tab_d = 6.7;
+    const side_tab_h = fred_h;
+    const side_tab_y = ry + (fred_d - side_tab_d) / 2.0;
+
+    const left_side_cut = _box(rx - side_tab_w, side_tab_y,
+                              z_top - side_tab_h, side_tab_w, side_tab_d, side_tab_h);
+    const right_side_cut = _box(rx + fred_w, side_tab_y,
+                               z_top - side_tab_h, side_tab_w, side_tab_d, side_tab_h);
+
+    const fred_void = _union_all([
+      _rounded_rect_prism(rx, ry, z_top - fred_h, fred_w, fred_d, fred_h, fred_r),
+      left_side_cut,
+      right_side_cut,
+    ]);
+    return (slab.add(triangle)).subtract(fred_void);
+  }
+
   return slab.add(triangle);
 }
 
@@ -404,11 +468,15 @@ function _make_bin_labels(p, gx_, gy_) {
   if (p.label_position === 'Full') {
     for (let dy = 0; dy <= dy_n; dy++) {
       const label_w = Wx - 2 * OFFSET_XY;
-      const label_d = (dy === 0) ? (p.label_depth + STACKING_LIP_WIDTH) : p.label_depth;
+      let base_depth = p.label_depth;
+      if (p.label_type === 'fred') {
+        base_depth = (dy === 0) ? 13.0 : 14.0;
+      }
+      const label_d = (dy === 0) ? (base_depth + STACKING_LIP_WIDTH) : base_depth;
       const sy = (Wy * (dy_n + 1 - dy)
                   - OFFSET_XY * (dy_n + 1 - 2.0 * dy)
                   + wall * dy) / (dy_n + 1);
-      parts.push(_make_bin_label(p, gx_, gy_, OFFSET_XY, sy, label_w, label_d));
+      parts.push(_make_bin_label(p, gx_, gy_, OFFSET_XY, sy, label_w, label_d, dy === 0));
     }
   } else if (p.label_position === 'Left') {
     for (let dx = 0; dx <= dx_n; dx++) {

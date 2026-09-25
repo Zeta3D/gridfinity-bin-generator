@@ -71,6 +71,9 @@ class GridfinityParams:
     label_position: LabelPosition = "Full"
     label_width: float = 30.0
     label_depth: float = 13.0
+    # Label type — currently two options: "standard" and "fred"
+    # Kept as a string so it's easy to extend later.
+    label_type: str = "standard"
 
     scoops: bool = False
     scoop_radius: float = 15.0
@@ -435,6 +438,24 @@ def _make_bin_dividers(p: GridfinityParams, gx_: float, gy_: float) -> Manifold:
             cell_cyls = [_cyl(cx, cy, 0.0, full_h, radius_0, radius_0)
                          for cx, cy in cell_corners]
             voids.append(_hull4(*cell_cyls))
+
+    # We need to add a void for the label tab(s) if we're using the Fred label style.  
+    # The void is a simple box that cuts through the top of the bin, and its position 
+    # depends on whether we have dividers and whether we want a label for each section.
+    if getattr(p, 'label_type', 'standard') == 'fred' and p.labels:
+        z_top = (p.grids_z * BASIC_UNIT_Z) - TOP_CLEARANCE_OFFSET
+        dx_n = p.dividers_x if (p.dividers and p.label_for_each_section) else 0
+        dy_n = p.dividers_y if (p.dividers and p.label_for_each_section) else 0
+
+        for dy in range(dy_n + 1):
+            label_w = Wx - 2 * OFFSET_XY
+            base_depth = 13.0 if dy == 0 else 14.0
+            label_d = (base_depth + STACKING_LIP_WIDTH) if dy == 0 else base_depth
+            sy = (Wy * (dy_n + 1 - dy)
+                    - OFFSET_XY * (dy_n + 1 - 2.0 * dy)
+                    + wall * dy) / (dy_n + 1)
+            voids.append(_box(OFFSET_XY, sy - label_d, z_top - 1.0, label_w, label_d, 1.0))
+
     return _diff_all(outer, voids)
 
 
@@ -447,12 +468,13 @@ def _make_bin_label(p: GridfinityParams, gx_: float, gy_: float,
     """
     z_top = (p.grids_z * BASIC_UNIT_Z) - TOP_CLEARANCE_OFFSET
 
-    # 1 mm top slab
-    slab = _box(start_x, start_y - depth, z_top - LABEL_HEIGHT, width, depth, LABEL_HEIGHT)
+    # slab height: 2 mm for fred (we will subtract 1 mm), otherwise LABEL_HEIGHT
+    slab_h = 2.0 if getattr(p, 'label_type', 'standard') == 'fred' else LABEL_HEIGHT
+    slab = _box(start_x, start_y - depth, z_top - slab_h, width, depth, slab_h)
 
     # Sloped wedge (hull of two thin rectangles, exactly mirroring SCAD)
-    rect_a = _box(start_x, start_y - depth, z_top - LABEL_HEIGHT, width, depth, 0.0001)
-    rect_b = _box(start_x, start_y, z_top - LABEL_HEIGHT - depth, width, 0.0001, 0.0001)
+    rect_a = _box(start_x, start_y - depth, z_top - slab_h, width, depth, 0.0001)
+    rect_b = _box(start_x, start_y, z_top - slab_h - depth, width, 0.0001, 0.0001)
     triangle = Manifold.batch_hull([rect_a, rect_b])
 
     if p.ultra_light_labels:
@@ -481,6 +503,60 @@ def _make_bin_label(p: GridfinityParams, gx_: float, gy_: float,
                                   rips_distance, depth, depth))
         triangle = _diff_all(triangle, rip_voids)
 
+    # Fred label style: subtract a rounded-rect recess centered on the tab.
+    if getattr(p, 'label_type', 'standard') == 'fred':
+        fred_w = 36.3 + 42.0 * max(0.0, gx_ - 1.0)
+        fred_d = 12.0
+        fred_h = 1.0
+        fred_r = 2.3
+
+        # center the recess horizontally and vertically within the tab
+        rx = start_x + (width - fred_w) / 2.0
+        # The first Fred tab in each group is the only one with the extra
+        # stacking-lip offset.
+        extra_depth = 1.0 if depth == 14.0 else STACKING_LIP_WIDTH
+        ry = start_y - fred_d - extra_depth
+
+        def _rounded_rect_prism(x0: float, y0: float, z0: float, w: float, d: float, h: float, r: float) -> Manifold:
+            parts: list[Manifold] = []
+            e = EPS_VOID
+            # Slightly swell the void before unioning the rectangles + corner
+            # cylinders. Exact face coincidences between these pieces can leave
+            # a zero-thickness sliver in the preview; the extra 1e-3 mm is below
+            # any printer tolerance and keeps the recess visually identical.
+            if w - 2 * r > 0 and d - 2 * r > 0:
+                parts.append(_box(x0 + r - e, y0 + r - e, z0 - e, w - 2 * r + 2 * e, d - 2 * r + 2 * e, h + 2 * e))
+            parts.append(_box(x0 - e, y0 + r - e, z0 - e, r + e, max(0.0, d - 2 * r) + 2 * e, h + 2 * e))
+            parts.append(_box(x0 + w - r, y0 + r - e, z0 - e, r + e, max(0.0, d - 2 * r) + 2 * e, h + 2 * e))
+            parts.append(_box(x0 + r - e, y0 - e, z0 - e, max(0.0, w - 2 * r) + 2 * e, r + e, h + 2 * e))
+            parts.append(_box(x0 + r - e, y0 + d - r, z0 - e, max(0.0, w - 2 * r) + 2 * e, r + e, h + 2 * e))
+            parts.extend([
+                _cyl(x0 + r,         y0 + r,         z0 - e, h + 2 * e, r + e, r + e),
+                _cyl(x0 + w - r,     y0 + r,         z0 - e, h + 2 * e, r + e, r + e),
+                _cyl(x0 + r,         y0 + d - r,     z0 - e, h + 2 * e, r + e, r + e),
+                _cyl(x0 + w - r,     y0 + d - r,     z0 - e, h + 2 * e, r + e, r + e),
+            ])
+            return _union_all(parts)
+
+        side_tab_w = 1.0
+        side_tab_d = 6.7
+        side_tab_h = fred_h
+        side_tab_y = ry + (fred_d - side_tab_d) / 2.0
+
+        # The fred tabs sit outside the rounded rect prism, one on each side,
+        # centered in Y within the recess.
+        left_side_cut = _box(rx - side_tab_w, side_tab_y,
+                            z_top - side_tab_h, side_tab_w, side_tab_d, side_tab_h)
+        right_side_cut = _box(rx + fred_w, side_tab_y,
+                             z_top - side_tab_h, side_tab_w, side_tab_d, side_tab_h)
+
+        fred_void = _union_all([
+            _rounded_rect_prism(rx, ry, z_top - fred_h, fred_w, fred_d, fred_h, fred_r),
+            left_side_cut,
+            right_side_cut,
+        ])
+        return _diff_all(slab + triangle, [fred_void])
+
     return slab + triangle
 
 
@@ -498,7 +574,10 @@ def _make_bin_labels(p: GridfinityParams, gx_: float, gy_: float) -> Manifold:
     if p.label_position == "Full":
         for dy in range(dy_n + 1):
             label_w = Wx - 2 * OFFSET_XY
-            label_d = (p.label_depth + STACKING_LIP_WIDTH) if dy == 0 else p.label_depth
+            base_depth = p.label_depth
+            if getattr(p, 'label_type', 'standard') == 'fred':
+                base_depth = 13.0 if dy == 0 else 14.0
+            label_d = (base_depth + STACKING_LIP_WIDTH) if dy == 0 else base_depth
             sy = (Wy * (dy_n + 1 - dy)
                   - OFFSET_XY * (dy_n + 1 - 2.0 * dy)
                   + wall * dy) / (dy_n + 1)

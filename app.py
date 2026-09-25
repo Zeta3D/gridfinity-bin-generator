@@ -81,6 +81,9 @@ def _params_from_request() -> G.GridfinityParams:
         "magnets", "dividers", "labels", "label_for_each_section", "scoops",
         "brim_ears",
     }
+    # Allow label_type as a freeform string but validate known values later
+    if 'label_type' in merged:
+        merged['label_type'] = str(merged['label_type'])
     for k in coerce_int:
         merged[k] = int(merged[k])
     for k in coerce_float:
@@ -93,6 +96,8 @@ def _params_from_request() -> G.GridfinityParams:
             merged[k] = bool(v)
     if merged["label_position"] not in ("Full", "Left", "Center", "Right"):
         raise ValueError(f"Invalid label_position: {merged['label_position']}")
+    if merged.get('label_type') not in (None, 'standard', 'fred'):
+        raise ValueError(f"Invalid label_type: {merged.get('label_type')}")
     return G.GridfinityParams(**merged)
 
 
