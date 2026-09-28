@@ -438,7 +438,6 @@ def _make_bin_dividers(p: GridfinityParams, gx_: float, gy_: float) -> Manifold:
             cell_cyls = [_cyl(cx, cy, 0.0, full_h, radius_0, radius_0)
                          for cx, cy in cell_corners]
             voids.append(_hull4(*cell_cyls))
-
     return _diff_all(outer, voids)
 
 

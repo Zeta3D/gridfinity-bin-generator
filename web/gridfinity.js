@@ -350,22 +350,6 @@ function _make_bin_dividers(p, gx_, gy_) {
         _cyl(cx, cy, 0.0, full_h, radius_0, radius_0))));
     }
   }
-
-  if (p.label_type === 'fred' && p.labels) {
-    const z_top = (p.grids_z * BASIC_UNIT_Z) - TOP_CLEARANCE_OFFSET;
-    const dx_n = (p.dividers && p.label_for_each_section) ? p.dividers_x : 0;
-    const dy_n = (p.dividers && p.label_for_each_section) ? p.dividers_y : 0;
-
-    for (let dy = 0; dy <= dy_n; dy++) {
-      const label_w = Wx - 2 * OFFSET_XY;
-      const base_depth = (dy === 0) ? 13.0 : 14.0;
-      const label_d = (dy === 0) ? (base_depth + STACKING_LIP_WIDTH) : base_depth;
-      const sy = (Wy * (dy_n + 1 - dy)
-        - OFFSET_XY * (dy_n + 1 - 2.0 * dy)
-        + wall * dy) / (dy_n + 1);
-      voids.push(_box(OFFSET_XY, sy - label_d, z_top - 1.0, label_w, label_d, 1.0));
-    }
-  }
   return _diff_all(outer, voids);
 }
 
@@ -450,20 +434,22 @@ function _make_bin_label(p, gx_, gy_, start_x, start_y, width, depth) {
       left_side_cut,
       right_side_cut,
     ]);
-    return (slab.add(triangle)).subtract(fred_void);
+    // Return label piece and fred void separately so caller can subtract the
+    // fred void from the whole model instead of only from the slab.
+    return { label: slab.add(triangle), fredVoid: fred_void };
   }
-
-  return slab.add(triangle);
+  return { label: slab.add(triangle), fredVoid: null };
 }
 
 function _make_bin_labels(p, gx_, gy_) {
-  if (!p.labels) return new Manifold();
+  if (!p.labels) return [new Manifold(), null];
   const dx_n = (p.dividers && p.label_for_each_section) ? p.dividers_x : 0;
   const dy_n = (p.dividers && p.label_for_each_section) ? p.dividers_y : 0;
   const u = _unit_xy(p);
   const Wx = gx_ * u, Wy = gy_ * u;
   const wall = p.wall_thickness;
   const parts = [];
+  const fred_voids = [];
 
   if (p.label_position === 'Full') {
     for (let dy = 0; dy <= dy_n; dy++) {
@@ -476,7 +462,11 @@ function _make_bin_labels(p, gx_, gy_) {
       const sy = (Wy * (dy_n + 1 - dy)
                   - OFFSET_XY * (dy_n + 1 - 2.0 * dy)
                   + wall * dy) / (dy_n + 1);
-      parts.push(_make_bin_label(p, gx_, gy_, OFFSET_XY, sy, label_w, label_d, dy === 0));
+      {
+        const { label, fredVoid } = _make_bin_label(p, gx_, gy_, OFFSET_XY, sy, label_w, label_d, dy === 0);
+        parts.push(label);
+        if (fredVoid) fred_voids.push(fredVoid);
+      }
     }
   } else if (p.label_position === 'Left') {
     for (let dx = 0; dx <= dx_n; dx++) {
@@ -485,7 +475,10 @@ function _make_bin_labels(p, gx_, gy_) {
         const ld = (dy === 0) ? (p.label_depth + STACKING_LIP_WIDTH) : p.label_depth;
         const sx = OFFSET_XY + ((Wx - 2 * OFFSET_XY - wall) / (dx_n + 1)) * dx;
         const sy = (Wy - OFFSET_XY) - ((Wy - 2 * OFFSET_XY - wall) / (dy_n + 1)) * dy;
-        parts.push(_make_bin_label(p, gx_, gy_, sx, sy, lw, ld));
+        {
+          const { label, fredVoid } = _make_bin_label(p, gx_, gy_, sx, sy, lw, ld);
+          parts.push(label);
+        }
       }
     }
   } else if (p.label_position === 'Center') {
@@ -496,7 +489,10 @@ function _make_bin_labels(p, gx_, gy_) {
         const cell_w = (Wx - 2 * OFFSET_XY - wall) / (dx_n + 1);
         const sx = OFFSET_XY + cell_w * dx + cell_w / 2.0 - lw / 2.0;
         const sy = (Wy - OFFSET_XY) - ((Wy - 2 * OFFSET_XY - wall) / (dy_n + 1)) * dy;
-        parts.push(_make_bin_label(p, gx_, gy_, sx, sy, lw, ld));
+                {
+                  const { label, fredVoid } = _make_bin_label(p, gx_, gy_, sx, sy, lw, ld);
+                  parts.push(label);
+                }
       }
     }
   } else if (p.label_position === 'Right') {
@@ -507,11 +503,16 @@ function _make_bin_labels(p, gx_, gy_) {
         const cell_w = (Wx - 2 * OFFSET_XY - wall) / (dx_n + 1);
         const sx = OFFSET_XY + cell_w * dx + (cell_w + wall) - lw;
         const sy = (Wy - OFFSET_XY) - ((Wy - 2 * OFFSET_XY - wall) / (dy_n + 1)) * dy;
-        parts.push(_make_bin_label(p, gx_, gy_, sx, sy, lw, ld));
+        {
+          const { label, fredVoid } = _make_bin_label(p, gx_, gy_, sx, sy, lw, ld);
+          parts.push(label);
+        }
       }
     }
   }
-  return _union_all(parts);
+  const labels_union = _union_all(parts);
+  const fred_union = (fred_voids.length > 0) ? _union_all(fred_voids) : null;
+  return [labels_union, fred_union];
 }
 
 function _make_scoop_one(p, gx_, gy_, start_y, spacing) {
@@ -676,7 +677,12 @@ export function buildBin(params) {
   if (p.dividers && (p.dividers_x > 0 || p.dividers_y > 0)) {
     pieces.push(_make_bin_dividers(p, gx_, gy_));
   }
-  if (p.labels)  pieces.push(_make_bin_labels(p, gx_, gy_));
+  let fred_union = null;
+  if (p.labels) {
+    const [labels_union, fredU] = _make_bin_labels(p, gx_, gy_);
+    pieces.push(labels_union);
+    fred_union = fredU;
+  }
   if (p.scoops)  pieces.push(_make_bin_scoops(p, gx_, gy_));
   const union_part = _union_all(pieces);
 
@@ -684,6 +690,7 @@ export function buildBin(params) {
   clean = _mirror_xy(clean, !p.half_grid_right, !p.half_grid_top, Wx, Wy);
 
   let result = union_part.subtract(clean);
+  if (fred_union) result = result.subtract(fred_union);
 
   // SCAD centers the footprint on the origin
   result = result.translate([-Wx / 2.0, -Wy / 2.0, 0]);
