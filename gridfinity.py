@@ -439,28 +439,11 @@ def _make_bin_dividers(p: GridfinityParams, gx_: float, gy_: float) -> Manifold:
                          for cx, cy in cell_corners]
             voids.append(_hull4(*cell_cyls))
 
-    # We need to add a void for the label tab(s) if we're using the Fred label style.  
-    # The void is a simple box that cuts through the top of the bin, and its position 
-    # depends on whether we have dividers and whether we want a label for each section.
-    if getattr(p, 'label_type', 'standard') == 'fred' and p.labels:
-        z_top = (p.grids_z * BASIC_UNIT_Z) - TOP_CLEARANCE_OFFSET
-        dx_n = p.dividers_x if (p.dividers and p.label_for_each_section) else 0
-        dy_n = p.dividers_y if (p.dividers and p.label_for_each_section) else 0
-
-        for dy in range(dy_n + 1):
-            label_w = Wx - 2 * OFFSET_XY
-            base_depth = 13.0 if dy == 0 else 14.0
-            label_d = (base_depth + STACKING_LIP_WIDTH) if dy == 0 else base_depth
-            sy = (Wy * (dy_n + 1 - dy)
-                    - OFFSET_XY * (dy_n + 1 - 2.0 * dy)
-                    + wall * dy) / (dy_n + 1)
-            voids.append(_box(OFFSET_XY, sy - label_d, z_top - 1.0, label_w, label_d, 1.0))
-
     return _diff_all(outer, voids)
 
 
 def _make_bin_label(p: GridfinityParams, gx_: float, gy_: float,
-                    start_x: float, start_y: float, width: float, depth: float) -> Manifold:
+                    start_x: float, start_y: float, width: float, depth: float) -> tuple[Manifold, Manifold | None]:
     """One label tap (slab + sloped triangular underside).
 
     Built as the SCAD `hull()` of two thin slabs — convex hull is exactly the
@@ -555,12 +538,15 @@ def _make_bin_label(p: GridfinityParams, gx_: float, gy_: float,
             left_side_cut,
             right_side_cut,
         ])
-        return _diff_all(slab + triangle, [fred_void])
+        # Return the visible label piece (slab + triangle) and the fred void
+        # which should be subtracted from the whole model later.
+        return (slab + triangle, fred_void)
+    
+    # Not fred: no global void
+    return (slab + triangle, None)
 
-    return slab + triangle
 
-
-def _make_bin_labels(p: GridfinityParams, gx_: float, gy_: float) -> Manifold:
+def _make_bin_labels(p: GridfinityParams, gx_: float, gy_: float) -> tuple[Manifold, Manifold]:
     if not p.labels:
         return Manifold()
 
@@ -571,6 +557,7 @@ def _make_bin_labels(p: GridfinityParams, gx_: float, gy_: float) -> Manifold:
     wall = p.wall_thickness
     parts: list[Manifold] = []
 
+    fred_voids: list[Manifold] = []
     if p.label_position == "Full":
         for dy in range(dy_n + 1):
             label_w = Wx - 2 * OFFSET_XY
@@ -581,7 +568,10 @@ def _make_bin_labels(p: GridfinityParams, gx_: float, gy_: float) -> Manifold:
             sy = (Wy * (dy_n + 1 - dy)
                   - OFFSET_XY * (dy_n + 1 - 2.0 * dy)
                   + wall * dy) / (dy_n + 1)
-            parts.append(_make_bin_label(p, gx_, gy_, OFFSET_XY, sy, label_w, label_d))
+            lbl, void = _make_bin_label(p, gx_, gy_, OFFSET_XY, sy, label_w, label_d)
+            parts.append(lbl)
+            if void is not None:
+                fred_voids.append(void)
 
     elif p.label_position == "Left":
         for dx in range(dx_n + 1):
@@ -590,7 +580,7 @@ def _make_bin_labels(p: GridfinityParams, gx_: float, gy_: float) -> Manifold:
                 ld = (p.label_depth + STACKING_LIP_WIDTH) if dy == 0 else p.label_depth
                 sx = OFFSET_XY + ((Wx - 2 * OFFSET_XY - wall) / (dx_n + 1)) * dx
                 sy = (Wy - OFFSET_XY) - ((Wy - 2 * OFFSET_XY - wall) / (dy_n + 1)) * dy
-                parts.append(_make_bin_label(p, gx_, gy_, sx, sy, lw, ld))
+                lbl, void = _make_bin_label(p, gx_, gy_, sx, sy, lw, ld)
 
     elif p.label_position == "Center":
         for dx in range(dx_n + 1):
@@ -600,7 +590,7 @@ def _make_bin_labels(p: GridfinityParams, gx_: float, gy_: float) -> Manifold:
                 cell_w = (Wx - 2 * OFFSET_XY - wall) / (dx_n + 1)
                 sx = OFFSET_XY + cell_w * dx + cell_w / 2.0 - lw / 2.0
                 sy = (Wy - OFFSET_XY) - ((Wy - 2 * OFFSET_XY - wall) / (dy_n + 1)) * dy
-                parts.append(_make_bin_label(p, gx_, gy_, sx, sy, lw, ld))
+                lbl, void = _make_bin_label(p, gx_, gy_, sx, sy, lw, ld)
 
     elif p.label_position == "Right":
         for dx in range(dx_n + 1):
@@ -610,9 +600,14 @@ def _make_bin_labels(p: GridfinityParams, gx_: float, gy_: float) -> Manifold:
                 cell_w = (Wx - 2 * OFFSET_XY - wall) / (dx_n + 1)
                 sx = OFFSET_XY + cell_w * dx + (cell_w + wall) - lw
                 sy = (Wy - OFFSET_XY) - ((Wy - 2 * OFFSET_XY - wall) / (dy_n + 1)) * dy
-                parts.append(_make_bin_label(p, gx_, gy_, sx, sy, lw, ld))
+                lbl, void = _make_bin_label(p, gx_, gy_, sx, sy, lw, ld)
 
-    return _union_all(parts)
+    # Attach any fred voids as an attribute on the returned union so the
+    # caller can subtract them from the whole model. We return a tuple:
+    # (labels_union, fred_voids_union)
+    labels_union = _union_all(parts)
+    fred_union = _union_all(fred_voids) if fred_voids else Manifold()
+    return labels_union, fred_union
 
 
 def _make_scoop_one(p: GridfinityParams, gx_: float, gy_: float,
@@ -787,8 +782,10 @@ def build_bin(p: GridfinityParams) -> Manifold:
     pieces = [base, body, lip]
     if p.dividers and (p.dividers_x > 0 or p.dividers_y > 0):
         pieces.append(_make_bin_dividers(p, gx_, gy_))
+    fred_voids_union = Manifold()
     if p.labels:
-        pieces.append(_make_bin_labels(p, gx_, gy_))
+        labels_union, fred_voids_union = _make_bin_labels(p, gx_, gy_)
+        pieces.append(labels_union)
     if p.scoops:
         pieces.append(_make_bin_scoops(p, gx_, gy_))
     union_part = _union_all(pieces)
@@ -796,7 +793,10 @@ def build_bin(p: GridfinityParams) -> Manifold:
     clean = _make_bin_clean(p, gx_, gy_)
     clean = _mirror_xy(clean, not p.half_grid_right, not p.half_grid_top, Wx, Wy)
 
+    # Subtract the global clean volume, then subtract any fred label voids
     result = union_part - clean
+    if not fred_voids_union.is_empty():
+        result = result - fred_voids_union
 
     # SCAD centers the footprint on the origin
     result = result.translate([-Wx / 2.0, -Wy / 2.0, 0])
