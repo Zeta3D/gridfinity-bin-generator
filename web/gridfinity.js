@@ -357,7 +357,7 @@ function _make_bin_label(p, gx_, gy_, start_x, start_y, width, depth) {
   const z_top = (p.grids_z * BASIC_UNIT_Z) - TOP_CLEARANCE_OFFSET;
 
   // 1 mm top slab
-  const slab_h = (p.label_type === 'fred') ? 2.0 : LABEL_HEIGHT;
+  const slab_h = (p.label_type === 'pred') ? 2.0 : LABEL_HEIGHT;
   const slab = _box(start_x, start_y - depth, z_top - slab_h, width, depth, slab_h);
 
   // Sloped wedge (hull of two thin rectangles, mirroring SCAD)
@@ -391,16 +391,16 @@ function _make_bin_label(p, gx_, gy_, start_x, start_y, width, depth) {
     }
     triangle = _diff_all(triangle, rip_voids);
   }
-  // Fred label style: subtract rounded rect recess
-  if (p.label_type === 'fred') {
-    const fred_w = 36.3 + 42.0 * Math.max(0.0, gx_ - 1.0);    
-    const fred_d = 12.0;
-    const fred_h = 1.0;
-    const fred_r = 2.3/2.0;
+  // Pred label style: subtract rounded rect recess
+  if (p.label_type === 'pred') {
+    const pred_w = 36.3 + 42.0 * Math.max(0.0, gx_ - 1.0);    
+    const pred_d = 12.0;
+    const pred_h = 1.0;
+    const pred_r = 2.3/2.0;
 
-    const rx = start_x + (width - fred_w) / 2.0;
+    const rx = start_x + (width - pred_w) / 2.0;
     const extra_depth = (depth === 14.0) ? 1.0 : STACKING_LIP_WIDTH;
-    const ry = start_y - fred_d - extra_depth;
+    const ry = start_y - pred_d - extra_depth;
 
     function _rounded_rect_prism(x0, y0, z0, w, d, h, r) {
       const parts = [];
@@ -421,24 +421,24 @@ function _make_bin_label(p, gx_, gy_, start_x, start_y, width, depth) {
 
     const side_tab_w = 1.0;
     const side_tab_d = 6.7;
-    const side_tab_h = fred_h;
-    const side_tab_y = ry + (fred_d - side_tab_d) / 2.0;
+    const side_tab_h = pred_h;
+    const side_tab_y = ry + (pred_d - side_tab_d) / 2.0;
 
     const left_side_cut = _box(rx - side_tab_w, side_tab_y,
                               z_top - side_tab_h, side_tab_w, side_tab_d, side_tab_h);
-    const right_side_cut = _box(rx + fred_w, side_tab_y,
+    const right_side_cut = _box(rx + pred_w, side_tab_y,
                                z_top - side_tab_h, side_tab_w, side_tab_d, side_tab_h);
 
-    const fred_void = _union_all([
-      _rounded_rect_prism(rx, ry, z_top - fred_h, fred_w, fred_d, fred_h, fred_r),
+    const pred_void = _union_all([
+      _rounded_rect_prism(rx, ry, z_top - pred_h, pred_w, pred_d, pred_h, pred_r),
       left_side_cut,
       right_side_cut,
     ]);
-    // Return label piece and fred void separately so caller can subtract the
-    // fred void from the whole model instead of only from the slab.
-    return { label: slab.add(triangle), fredVoid: fred_void };
+    // Return label piece and pred void separately so caller can subtract the
+    // pred void from the whole model instead of only from the slab.
+    return { label: slab.add(triangle), predVoid: pred_void };
   }
-  return { label: slab.add(triangle), fredVoid: null };
+  return { label: slab.add(triangle), predVoid: null };
 }
 
 function _make_bin_labels(p, gx_, gy_) {
@@ -449,13 +449,13 @@ function _make_bin_labels(p, gx_, gy_) {
   const Wx = gx_ * u, Wy = gy_ * u;
   const wall = p.wall_thickness;
   const parts = [];
-  const fred_voids = [];
+  const pred_voids = [];
 
   if (p.label_position === 'Full') {
     for (let dy = 0; dy <= dy_n; dy++) {
       const label_w = Wx - 2 * OFFSET_XY;
       let base_depth = p.label_depth;
-      if (p.label_type === 'fred') {
+      if (p.label_type === 'pred') {
         base_depth = (dy === 0) ? 13.0 : 14.0;
       }
       const label_d = (dy === 0) ? (base_depth + STACKING_LIP_WIDTH) : base_depth;
@@ -463,9 +463,9 @@ function _make_bin_labels(p, gx_, gy_) {
                   - OFFSET_XY * (dy_n + 1 - 2.0 * dy)
                   + wall * dy) / (dy_n + 1);
       {
-        const { label, fredVoid } = _make_bin_label(p, gx_, gy_, OFFSET_XY, sy, label_w, label_d, dy === 0);
+        const { label, predVoid } = _make_bin_label(p, gx_, gy_, OFFSET_XY, sy, label_w, label_d, dy === 0);
         parts.push(label);
-        if (fredVoid) fred_voids.push(fredVoid);
+        if (predVoid) pred_voids.push(predVoid);
       }
     }
   } else if (p.label_position === 'Left') {
@@ -476,8 +476,9 @@ function _make_bin_labels(p, gx_, gy_) {
         const sx = OFFSET_XY + ((Wx - 2 * OFFSET_XY - wall) / (dx_n + 1)) * dx;
         const sy = (Wy - OFFSET_XY) - ((Wy - 2 * OFFSET_XY - wall) / (dy_n + 1)) * dy;
         {
-          const { label, fredVoid } = _make_bin_label(p, gx_, gy_, sx, sy, lw, ld);
+          const { label, predVoid } = _make_bin_label(p, gx_, gy_, sx, sy, lw, ld);
           parts.push(label);
+          if (predVoid) pred_voids.push(predVoid);
         }
       }
     }
@@ -490,7 +491,7 @@ function _make_bin_labels(p, gx_, gy_) {
         const sx = OFFSET_XY + cell_w * dx + cell_w / 2.0 - lw / 2.0;
         const sy = (Wy - OFFSET_XY) - ((Wy - 2 * OFFSET_XY - wall) / (dy_n + 1)) * dy;
                 {
-                  const { label, fredVoid } = _make_bin_label(p, gx_, gy_, sx, sy, lw, ld);
+                  const { label, predVoid } = _make_bin_label(p, gx_, gy_, sx, sy, lw, ld);
                   parts.push(label);
                 }
       }
@@ -504,15 +505,15 @@ function _make_bin_labels(p, gx_, gy_) {
         const sx = OFFSET_XY + cell_w * dx + (cell_w + wall) - lw;
         const sy = (Wy - OFFSET_XY) - ((Wy - 2 * OFFSET_XY - wall) / (dy_n + 1)) * dy;
         {
-          const { label, fredVoid } = _make_bin_label(p, gx_, gy_, sx, sy, lw, ld);
+          const { label, predVoid } = _make_bin_label(p, gx_, gy_, sx, sy, lw, ld);
           parts.push(label);
         }
       }
     }
   }
   const labels_union = _union_all(parts);
-  const fred_union = (fred_voids.length > 0) ? _union_all(fred_voids) : null;
-  return [labels_union, fred_union];
+  const pred_union = (pred_voids.length > 0) ? _union_all(pred_voids) : null;
+  return [labels_union, pred_union];
 }
 
 function _make_scoop_one(p, gx_, gy_, start_y, spacing) {
@@ -677,11 +678,11 @@ export function buildBin(params) {
   if (p.dividers && (p.dividers_x > 0 || p.dividers_y > 0)) {
     pieces.push(_make_bin_dividers(p, gx_, gy_));
   }
-  let fred_union = null;
+  let pred_union = null;
   if (p.labels) {
-    const [labels_union, fredU] = _make_bin_labels(p, gx_, gy_);
+    const [labels_union, predU] = _make_bin_labels(p, gx_, gy_);
     pieces.push(labels_union);
-    fred_union = fredU;
+    pred_union = predU;
   }
   if (p.scoops)  pieces.push(_make_bin_scoops(p, gx_, gy_));
   const union_part = _union_all(pieces);
@@ -690,7 +691,7 @@ export function buildBin(params) {
   clean = _mirror_xy(clean, !p.half_grid_right, !p.half_grid_top, Wx, Wy);
 
   let result = union_part.subtract(clean);
-  if (fred_union) result = result.subtract(fred_union);
+  if (pred_union) result = result.subtract(pred_union);
 
   // SCAD centers the footprint on the origin
   result = result.translate([-Wx / 2.0, -Wy / 2.0, 0]);

@@ -367,7 +367,7 @@
         <div class="row"><label>Label type</label>
           <select name="label_type">
             <option value="standard">Standard</option>
-            <option value="fred">Fred</option>
+            <option value="pred">Pred</option>
           </select></div>
       <div class="row"><label>Label width (mm)</label>
         <input type="number" name="label_width" value="30" min="10" max="100" step="0.1"></div>
@@ -821,26 +821,26 @@ try {
   status.textContent = 'Ready.';
   regenerate();
 
-  // Enforce fred -> Full. Disable position, width and depth when fred chosen
+  // Enforce pred -> Full. Disable position, width and depth when pred chosen
   const labelTypeEl_static = document.querySelector('select[name="label_type"]');
   const labelPosEl_static = document.querySelector('select[name="label_position"]');
   const labelWidthEl_static = document.querySelector('input[name="label_width"]');
   const labelDepthEl_static = document.querySelector('input[name="label_depth"]');
   if (labelTypeEl_static && labelPosEl_static && labelWidthEl_static && labelDepthEl_static) {
     labelTypeEl_static.addEventListener('change', () => {
-      const fred = labelTypeEl_static.value === 'fred';
-      if (fred) {
+      const pred = labelTypeEl_static.value === 'pred';
+      if (pred) {
         labelPosEl_static.value = 'Full';
       }
-      labelPosEl_static.disabled = fred;
-      labelWidthEl_static.disabled = fred;
-      labelDepthEl_static.disabled = fred;
+      labelPosEl_static.disabled = pred;
+      labelWidthEl_static.disabled = pred;
+      labelDepthEl_static.disabled = pred;
     });
-    const fred = labelTypeEl_static.value === 'fred';
-    if (fred) { labelPosEl_static.value = 'Full'; }
-    labelPosEl_static.disabled = fred;
-    labelWidthEl_static.disabled = fred;
-    labelDepthEl_static.disabled = fred;
+    const pred = labelTypeEl_static.value === 'pred';
+    if (pred) { labelPosEl_static.value = 'Full'; }
+    labelPosEl_static.disabled = pred;
+    labelWidthEl_static.disabled = pred;
+    labelDepthEl_static.disabled = pred;
   }
 } catch (err) {
   status.classList.add('error');

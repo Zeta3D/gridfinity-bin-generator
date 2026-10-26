@@ -96,7 +96,7 @@ def _params_from_request() -> G.GridfinityParams:
             merged[k] = bool(v)
     if merged["label_position"] not in ("Full", "Left", "Center", "Right"):
         raise ValueError(f"Invalid label_position: {merged['label_position']}")
-    if merged.get('label_type') not in (None, 'standard', 'fred'):
+    if merged.get('label_type') not in (None, 'standard', 'pred'):
         raise ValueError(f"Invalid label_type: {merged.get('label_type')}")
     return G.GridfinityParams(**merged)
 

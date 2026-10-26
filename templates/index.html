@@ -371,7 +371,7 @@
       <div class="row"><label>Label type</label>
         <select name="label_type">
           <option value="standard" {% if defaults.label_type == 'standard' %}selected{% endif %}>Standard</option>
-          <option value="fred" {% if defaults.label_type == 'fred' %}selected{% endif %}>Fred</option>
+          <option value="pred" {% if defaults.label_type == 'pred' %}selected{% endif %}>Pred</option>
         </select></div>
       <div class="row"><label>Label width (mm)</label>
         <input type="number" name="label_width" value="{{ defaults.label_width }}" min="10" max="100" step="0.1"></div>
@@ -812,27 +812,27 @@ document.addEventListener('keydown', (e) => {
 loadFromLocalStorage();
 refreshGroups();
 
-// Enforce fred -> Full. Disable position, width and depth when fred chosen
+// Enforce pred -> Full. Disable position, width and depth when pred chosen
 const labelTypeEl = form.querySelector('select[name="label_type"]');
 const labelPosEl = form.querySelector('select[name="label_position"]');
 const labelWidthEl = form.querySelector('input[name="label_width"]');
 const labelDepthEl = form.querySelector('input[name="label_depth"]');
 if (labelTypeEl && labelPosEl && labelWidthEl && labelDepthEl) {
   labelTypeEl.addEventListener('change', () => {
-    const fred = labelTypeEl.value === 'fred';
-    if (fred) {
+    const pred = labelTypeEl.value === 'pred';
+    if (pred) {
       labelPosEl.value = 'Full';
     }
-    labelPosEl.disabled = fred;
-    labelWidthEl.disabled = fred;
-    labelDepthEl.disabled = fred;
+    labelPosEl.disabled = pred;
+    labelWidthEl.disabled = pred;
+    labelDepthEl.disabled = pred;
   });
   // initialise state
-  const fred = labelTypeEl.value === 'fred';
-  if (fred) { labelPosEl.value = 'Full'; }
-  labelPosEl.disabled = fred;
-  labelWidthEl.disabled = fred;
-  labelDepthEl.disabled = fred;
+  const pred = labelTypeEl.value === 'pred';
+  if (pred) { labelPosEl.value = 'Full'; }
+  labelPosEl.disabled = pred;
+  labelWidthEl.disabled = pred;
+  labelDepthEl.disabled = pred;
 }
 
 // Initial render
