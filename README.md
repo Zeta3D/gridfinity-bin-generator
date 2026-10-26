@@ -1,6 +1,10 @@
 # Gridfinity Bin Generator
 
-🌐 **Live demo (browser-only build):** <https://sitnikov.github.io/gridfinity-bin-generator/>
+🌐 **Live demo (browser-only build):** <https://github.com/Zeta3D/gridfinity-bin-generator>
+
+This project was forked from https://github.com/sitnikov/gridfinity-bin-generator to add
+support for Pred style labels (https://www.printables.com/model/592545-gridfinity-bin-with-printable-label-by-pred-parame)
+
 
 Web-based generator for **Ultra Light Gridfinity Bins** — Python port of
 HuMa_Meng's [Parametric Gridfinity Ultra Light Bins](https://www.printables.com/model/925520-gridfinity-ultra-light-bin-generator)
