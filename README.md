@@ -1,6 +1,6 @@
 # Gridfinity Bin Generator
 
-🌐 **Live demo (browser-only build):** <https://github.com/Zeta3D/gridfinity-bin-generator>
+🌐 **Live demo (browser-only build):** <https://zeta3d.github.io/gridfinity-bin-generator/>
 
 This project was forked from https://github.com/sitnikov/gridfinity-bin-generator to add
 support for Pred style labels (https://www.printables.com/model/592545-gridfinity-bin-with-printable-label-by-pred-parame)
